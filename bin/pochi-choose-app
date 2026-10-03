@@ -1,0 +1,15 @@
+#!/bin/bash
+# pochi-choose-app <file>
+# macOS のアプリ選択ダイアログを出し、選んだアプリでファイルを開く。
+set -u
+f="${1:-}"
+[ -e "$f" ] || { echo "no such file: $f" >&2; exit 1; }
+
+/usr/bin/osascript \
+  -e 'on run argv' \
+  -e '  set f to item 1 of argv' \
+  -e '  set theApp to choose application with title "開くアプリを選択"' \
+  -e '  set appName to name of theApp' \
+  -e '  do shell script "open -a " & quoted form of appName & " " & quoted form of f' \
+  -e 'end run' \
+  "$f" 2>/dev/null || exit 0

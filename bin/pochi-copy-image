@@ -1,0 +1,16 @@
+#!/bin/bash
+# pochi-copy-image <image>
+# 画像をPNGに変換してクリップボードへ入れる（JPEG/HEIC等もそのまま貼れる）
+set -u
+f="${1:-}"
+[ -f "$f" ] || { echo "no such file: $f" >&2; exit 1; }
+tmp="$(/usr/bin/mktemp -t pochiimg).png"
+if /usr/bin/sips -s format png -- "$f" --out "$tmp" >/dev/null 2>&1; then
+  /usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$tmp\") as «class PNGf»)"
+  rc=$?
+  rm -f "$tmp"
+  exit $rc
+fi
+rm -f "$tmp"
+echo "画像として読めませんでした: $f" >&2
+exit 1

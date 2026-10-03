@@ -1,0 +1,32 @@
+#!/bin/bash
+# open-in-iterm <command> [args...]
+# iTerm で新しいウィンドウを開き、渡されたコマンドを実行する。
+# iTerm が使えない環境では Terminal.app にフォールバックする。
+set -u
+[ $# -gt 0 ] || { echo "usage: open-in-iterm <command> [args...]" >&2; exit 1; }
+
+cmdline=""
+for a in "$@"; do
+  cmdline="$cmdline $(printf '%q' "$a")"
+done
+cmdline="${cmdline# }"
+
+/usr/bin/osascript \
+  -e 'on run argv' \
+  -e '  set c to item 1 of argv' \
+  -e '  tell application "iTerm"' \
+  -e '    activate' \
+  -e '    create window with default profile command c' \
+  -e '  end tell' \
+  -e 'end run' \
+  "$cmdline" 2>/dev/null && exit 0
+
+/usr/bin/osascript \
+  -e 'on run argv' \
+  -e '  set c to item 1 of argv' \
+  -e '  tell application "Terminal"' \
+  -e '    activate' \
+  -e '    do script c' \
+  -e '  end tell' \
+  -e 'end run' \
+  "$cmdline"
