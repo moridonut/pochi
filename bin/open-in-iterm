@@ -1,27 +1,36 @@
 #!/bin/bash
 # open-in-iterm <command> [args...]
 # iTerm で新しいウィンドウを開き、渡されたコマンドを実行する。
-# iTerm が使えない環境では Terminal.app にフォールバックする。
+# iTerm が無い環境では Terminal.app にフォールバックする。
+#
+# コマンドは新しいウィンドウのログインシェルに「入力」する形で実行するので、
+# PATH（Homebrew の vim など）はふだんのターミナルと同じになり、
+# コマンド終了後もウィンドウは残る。
 set -u
 [ $# -gt 0 ] || { echo "usage: open-in-iterm <command> [args...]" >&2; exit 1; }
 
+# 各引数をシングルクォートで囲む（日本語やスペースを含むパスでも安全）
+q() { local s=${1//\'/\'\\\'\'}; printf "'%s'" "$s"; }
 cmdline=""
 for a in "$@"; do
-  cmdline="$cmdline $(printf '%q' "$a")"
+  cmdline="$cmdline $(q "$a")"
 done
 cmdline="${cmdline# }"
 
-/usr/bin/osascript \
-  -e 'on run argv' \
-  -e '  set c to item 1 of argv' \
-  -e '  tell application "iTerm"' \
-  -e '    activate' \
-  -e '    create window with default profile command c' \
-  -e '  end tell' \
-  -e 'end run' \
-  "$cmdline" 2>/dev/null && exit 0
+if /usr/bin/open -Ra iTerm 2>/dev/null; then
+  exec /usr/bin/osascript \
+    -e 'on run argv' \
+    -e '  set c to item 1 of argv' \
+    -e '  tell application "iTerm"' \
+    -e '    activate' \
+    -e '    set w to (create window with default profile)' \
+    -e '    tell current session of w to write text c' \
+    -e '  end tell' \
+    -e 'end run' \
+    "$cmdline"
+fi
 
-/usr/bin/osascript \
+exec /usr/bin/osascript \
   -e 'on run argv' \
   -e '  set c to item 1 of argv' \
   -e '  tell application "Terminal"' \

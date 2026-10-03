@@ -10,6 +10,11 @@ echo "==> compiling"
 mkdir -p "$APP/Contents/MacOS"
 swiftc -O -o "$APP/Contents/MacOS/pochi" Sources/main.swift
 
+echo "==> bundling helpers"
+mkdir -p "$APP/Contents/Resources/bin"
+cp bin/* "$APP/Contents/Resources/bin/"
+chmod +x "$APP/Contents/Resources/bin/"*
+
 echo "==> writing Info.plist"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

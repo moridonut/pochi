@@ -140,6 +140,16 @@ r | Finder で表示    | open -R %P
 | `open-in-iterm <cmd> [args...]` | iTerm で新規ウィンドウを開いてコマンドを実行（iTerm が無ければ Terminal.app） |
 | `pochi-choose-app <file>` | macOS のアプリ選択ダイアログを出して、選んだアプリで開く |
 
+これらは `build.sh` で `Pochi.app/Contents/Resources/bin` にも同梱され、pochi から実行するコマンドの
+PATH に自動で追加されます（`~/bin` `/opt/homebrew/bin` `/usr/local/bin` も追加）。
+Double Commander から起動したときのように PATH が最小限でも見つかります。
+
+`open-in-iterm` を初めて使うとき、macOS が「iTerm を制御しようとしています」という
+許可ダイアログを出します。拒否してしまった場合は
+「システム設定 → プライバシーとセキュリティ → オートメーション」で許可してください。
+
+コマンドが 2 秒以内にエラー終了した場合は、エラー内容をダイアログで表示します。
+
 ## 今のところ無いもの
 
 ぽちエスにあって pochi にまだ無い機能です。

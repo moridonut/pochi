@@ -256,6 +256,22 @@ func die(_ message: String) -> Never {
     exit(1)
 }
 
+/// Directories prepended to PATH for child commands. Double Commander (and
+/// anything launched from Finder/Dock) gives us only /usr/bin:/bin:..., so
+/// helpers like open-in-iterm would not be found without this.
+func extraPathDirs() -> [String] {
+    var dirs: [String] = []
+    // Helpers bundled by build.sh: Pochi.app/Contents/Resources/bin
+    if let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() {
+        dirs.append(exe.deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources/bin").path)
+    }
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    dirs += [home + "/bin", home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+    return dirs
+}
+
 func runCommand(_ command: String, cwd: String) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -265,18 +281,39 @@ func runCommand(_ command: String, cwd: String) {
     var env = ProcessInfo.processInfo.environment
     if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
     if env["LC_CTYPE"] == nil { env["LC_CTYPE"] = "UTF-8" }
+    let path = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+    env["PATH"] = (extraPathDirs() + [path]).joined(separator: ":")
     p.environment = env
+
+    // Capture stderr in a file (not a pipe, so a long-running child never
+    // blocks or gets SIGPIPE after we exit) and show it if the command fails
+    // quickly — when launched from Double Commander there is no terminal to
+    // see "command not found" in.
+    let log = FileManager.default.temporaryDirectory
+        .appendingPathComponent("pochi-\(getpid()).log")
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    let errHandle = try? FileHandle(forWritingTo: log)
+    if let h = errHandle { p.standardError = h }
+    defer { try? FileManager.default.removeItem(at: log) }
+
     do {
         try p.run()
     } catch {
         die("pochi: failed to run: \(command)")
     }
-}
 
-func defaultConfigPath() -> String {
-    if let p = ProcessInfo.processInfo.environment["POCHI_CONFIG"], !p.isEmpty { return p }
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    return home + "/.config/pochi/config.conf"
+    let deadline = Date().addingTimeInterval(2.0)
+    while p.isRunning && Date() < deadline { usleep(50_000) }
+    if p.isRunning || p.terminationStatus == 0 { return }
+
+    let err = (try? String(contentsOf: log, encoding: .utf8))?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    FileHandle.standardError.write((err + "\n").data(using: .utf8)!)
+    let alert = NSAlert()
+    alert.messageText = "pochi: コマンドが失敗しました（終了コード \(p.terminationStatus)）"
+    alert.informativeText = command + (err.isEmpty ? "" : "\n\n" + err)
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    alert.runModal()
 }
 
 // MARK: - Main
