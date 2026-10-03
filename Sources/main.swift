@@ -253,7 +253,52 @@ func buildMenu(_ nodes: [Node], handler: Handler) -> NSMenu {
 
 func die(_ message: String) -> Never {
     FileHandle.standardError.write((message + "\n").data(using: .utf8)!)
+    appendLog(message)
     exit(1)
+}
+
+// MARK: - Log
+//
+// Every command pochi runs, its stderr and its exit status are appended to
+// ~/Library/Logs/pochi.log (override with POCHI_LOG). Console.app shows it
+// under "Log Reports"; `tail -f ~/Library/Logs/pochi.log` works too.
+
+let logURL: URL = {
+    if let p = ProcessInfo.processInfo.environment["POCHI_LOG"], !p.isEmpty {
+        return URL(fileURLWithPath: (p as NSString).expandingTildeInPath)
+    }
+    return FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Logs/pochi.log")
+}()
+
+/// Opens the log for appending, rotating it to pochi.log.old past 1 MB.
+func openLog() -> FileHandle? {
+    let fm = FileManager.default
+    try? fm.createDirectory(at: logURL.deletingLastPathComponent(),
+                            withIntermediateDirectories: true)
+    if let size = (try? fm.attributesOfItem(atPath: logURL.path))?[.size] as? Int,
+       size > 1_000_000 {
+        let old = logURL.appendingPathExtension("old")
+        try? fm.removeItem(at: old)
+        try? fm.moveItem(at: logURL, to: old)
+    }
+    // O_APPEND so that the child (which may outlive us) and later log lines
+    // never overwrite each other.
+    let fd = open(logURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+    guard fd >= 0 else { return nil }
+    return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+}
+
+func logSize() -> UInt64 {
+    ((try? FileManager.default.attributesOfItem(atPath: logURL.path))?[.size] as? UInt64) ?? 0
+}
+
+func appendLog(_ message: String) {
+    guard let h = openLog() else { return }
+    let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current,
+                                            formatOptions: [.withInternetDateTime])
+    h.write("[\(stamp)] \(message)\n".data(using: .utf8)!)
+    h.closeFile()
 }
 
 /// Directories prepended to PATH for child commands. Double Commander (and
@@ -285,33 +330,45 @@ func runCommand(_ command: String, cwd: String) {
     env["PATH"] = (extraPathDirs() + [path]).joined(separator: ":")
     p.environment = env
 
-    // Capture stderr in a file (not a pipe, so a long-running child never
-    // blocks or gets SIGPIPE after we exit) and show it if the command fails
-    // quickly — when launched from Double Commander there is no terminal to
-    // see "command not found" in.
-    let log = FileManager.default.temporaryDirectory
-        .appendingPathComponent("pochi-\(getpid()).log")
-    FileManager.default.createFile(atPath: log.path, contents: nil)
-    let errHandle = try? FileHandle(forWritingTo: log)
-    if let h = errHandle { p.standardError = h }
-    defer { try? FileManager.default.removeItem(at: log) }
+    // The child's stderr goes straight into the log (a file, not a pipe, so a
+    // long-running child never blocks or gets SIGPIPE after we exit). If the
+    // command fails quickly we also show it — when launched from Double
+    // Commander there is no terminal to see "command not found" in.
+    appendLog("run: \(command)\n    cwd: \(cwd)\n    PATH: \(env["PATH"]!)")
+    let log = openLog()
+    let start = logSize()
+    if let h = log { p.standardError = h }
 
     do {
         try p.run()
     } catch {
         die("pochi: failed to run: \(command)")
     }
+    log?.closeFile()   // the child keeps its own copy
 
     let deadline = Date().addingTimeInterval(2.0)
     while p.isRunning && Date() < deadline { usleep(50_000) }
-    if p.isRunning || p.terminationStatus == 0 { return }
+    if p.isRunning {
+        appendLog("still running after 2s (pid \(p.processIdentifier)); later stderr is appended below")
+        return
+    }
 
-    let err = (try? String(contentsOf: log, encoding: .utf8))?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    // This run's stderr = everything the child wrote after `start`.
+    var err = ""
+    if let r = try? FileHandle(forReadingFrom: logURL) {
+        r.seek(toFileOffset: start)
+        err = String(decoding: r.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        r.closeFile()
+    }
+    appendLog("exit \(p.terminationStatus)")
+    if p.terminationStatus == 0 { return }
+
     FileHandle.standardError.write((err + "\n").data(using: .utf8)!)
     let alert = NSAlert()
     alert.messageText = "pochi: コマンドが失敗しました（終了コード \(p.terminationStatus)）"
     alert.informativeText = command + (err.isEmpty ? "" : "\n\n" + err)
+        + "\n\nログ: " + logURL.path
     NSApplication.shared.activate(ignoringOtherApps: true)
     alert.runModal()
 }

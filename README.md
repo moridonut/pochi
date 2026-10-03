@@ -150,6 +150,25 @@ Double Commander から起動したときのように PATH が最小限でも見
 
 コマンドが 2 秒以内にエラー終了した場合は、エラー内容をダイアログで表示します。
 
+## ログ
+
+pochi が実行したコマンド・カレントディレクトリ・PATH・エラー出力（stderr）・終了コードは
+`~/Library/Logs/pochi.log` に追記されます（環境変数 `POCHI_LOG` で変更可、1 MB を超えると
+`pochi.log.old` に退避）。
+
+```bash
+tail -f ~/Library/Logs/pochi.log      # 見ながら試す
+open -a Console ~/Library/Logs/pochi.log
+```
+
+```
+[2026-10-03T11:40:12+09:00] run: open-in-iterm vim '/Users/you/notes/memo.md'
+    cwd: /Users/you/notes
+    PATH: /Users/you/src/pochi/build/Pochi.app/Contents/Resources/bin:/Users/you/bin:...
+36:40: execution error: iTerm got an error: Not authorized to send Apple events to iTerm. (-1743)
+[2026-10-03T11:40:12+09:00] exit 1
+```
+
 ## 今のところ無いもの
 
 ぽちエスにあって pochi にまだ無い機能です。
