@@ -373,6 +373,12 @@ func runCommand(_ command: String, cwd: String) {
     alert.runModal()
 }
 
+func defaultConfigPath() -> String {
+    if let p = ProcessInfo.processInfo.environment["POCHI_CONFIG"], !p.isEmpty { return p }
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    return home + "/.config/pochi/config.conf"
+}
+
 // MARK: - Main
 
 var args = Array(CommandLine.arguments.dropFirst())
